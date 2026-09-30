@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Linux 离线包下载工具</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2333; --border:#2d333f;
+  --fg:#e6edf3; --dim:#8b949e; --accent:#4da3ff; --accent2:#2f81f7;
+  --green:#3fb950; --red:#f85149; --yellow:#d29922; --mono:'Cascadia Code',Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:'Segoe UI','Microsoft YaHei',sans-serif;font-size:14px}
+header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--panel)}
+header h1{font-size:18px;font-weight:600}
+header .badge{font-size:12px;color:var(--dim);border:1px solid var(--border);border-radius:12px;padding:3px 10px}
+header .badge b{color:var(--accent)}
+main{display:grid;grid-template-columns:minmax(420px,1fr) minmax(420px,1.2fr);gap:16px;padding:16px 24px;max-width:1700px;margin:0 auto}
+@media(max-width:1000px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
+.card h2{font-size:14px;color:var(--accent);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h2 .step{background:var(--accent2);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+select,input[type=text],input[type=number],textarea{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:7px 10px;font-size:13px;outline:none}
+select:focus,input:focus,textarea:focus{border-color:var(--accent)}
+textarea{font-family:var(--mono);font-size:12px;resize:vertical;min-height:96px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+button{background:var(--accent2);color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;transition:.15s}
+button:hover{background:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:transparent;border:1px solid var(--border);color:var(--fg)}
+button.ghost:hover{border-color:var(--accent)}
+button.danger{background:transparent;border:1px solid var(--red);color:var(--red)}
+button.sm{padding:4px 10px;font-size:12px}
+.btnbar{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+.hint{font-size:12px;color:var(--dim);margin-top:6px;line-height:1.5}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+th{color:var(--dim);font-weight:500;position:sticky;top:0;background:var(--panel2);z-index:1}
+td.name{color:var(--accent);font-family:var(--mono);font-size:12px}
+tr:hover td{background:#21262d}
+tr.sel td{background:#1f2c45}
+.tablewrap{max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:8px}
+.tag{font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--border);color:var(--dim)}
+.tag.rpm{color:#ffa657}.tag.deb{color:#7ee787}
+.logbox{background:#0a0d12;border:1px solid var(--border);border-radius:6px;height:280px;overflow-y:auto;padding:8px 10px;font-family:var(--mono);font-size:12px;line-height:1.7}
+.logbox .t{color:#555f6b;margin-right:8px}
+.logbox .done{color:var(--green)}.logbox .error,.logbox .failed{color:var(--red)}
+.logbox .skipped{color:var(--yellow)}.logbox .file{color:var(--fg)}
+.pbar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin:8px 0}
+.pbar>div{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));width:0;transition:width .3s}
+.taskhead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.taskhead .st{font-size:12px;color:var(--dim)}
+.taskhead .st.running{color:var(--accent)}.taskhead .st.done{color:var(--green)}
+.taskhead .st.error{color:var(--red)}.taskhead .st.cancelled{color:var(--yellow)}
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+.modal-mask.show{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;width:min(680px,92vw);max-height:80vh;display:flex;flex-direction:column}
+.modal h3{padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px}
+.modal .body{padding:12px 16px;overflow-y:auto;flex:1}
+.modal .foot{padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.diritem{padding:6px 10px;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:12.5px;display:flex;gap:8px}
+.diritem:hover{background:var(--panel2)}
+.diritem::before{content:'📁'}
+.curpath{font-family:var(--mono);font-size:12px;color:var(--accent);padding:4px 0 10px;word-break:break-all}
+.resolve-box{margin-top:10px;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--panel2)}
+.resolve-box .stat{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;margin-bottom:8px}
+.resolve-box .stat b{color:var(--accent)}
+.gap{color:var(--red);font-size:12px;font-family:var(--mono);line-height:1.7}
+.chkcol{width:26px}
+input[type=checkbox]{accent-color:var(--accent2);width:14px;height:14px;cursor:pointer}
+.mono{font-family:var(--mono);font-size:12px}
+.flex{display:flex;gap:8px;align-items:center}
+.gaps-title{color:var(--red);font-size:12.5px;margin:8px 0 4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 Linux 离线包下载工具</h1>
+  <span class="badge" id="stLoaded">元数据: 未加载</span>
+  <span class="badge" id="stArch"></span>
+  <span class="badge" id="stCache">缓存: --</span>
+</header>
+
+<main>
+<div class="col">
+
+  <div class="card">
+    <h2><span class="step">1</span>配置下载源（目标 Linux 的发行版与镜像）</h2>
+    <div class="row">
+      <div><label>发行版体系</label><select id="family"></select></div>
+      <div><label>发行版</label><select id="distro"></select></div>
+    </div>
+    <div class="row">
+      <div><label>镜像源</label><select id="mirror"></select></div>
+      <div><label>目标架构</label><select id="arch"></select></div>
+    </div>
+    <label>扩展源（可选，勾选后自动加入仓库列表）</label>
+    <div id="extrasWrap"></div>
+    <label>仓库列表（可手动增删修改）</label>
+    <textarea id="repoText" spellcheck="false"></textarea>
+    <div class="hint" id="repoHint"></div>
+    <div id="rpmImportRow">
+      <label>导入仓库 RPM（自动解出 .repo 里的仓库地址）</label>
+      <div class="flex">
+        <input type="text" id="repoRpmUrl" placeholder="https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm" style="flex:1">
+        <button class="ghost sm" id="btnImportRpm" style="white-space:nowrap">导入仓库</button>
+      </div>
+      <div class="hint">粘贴 yum 仓库安装包（repo rpm）的 URL，按当前「发行版版本 + 架构」自动替换 $releasever/$basearch 后追加到仓库列表；enabled=0 的仓库自动跳过。</div>
+    </div>
+    <div class="btnbar">
+      <button id="btnLoad">加载元数据</button>
+      <label class="flex" style="margin:0;font-size:12px;color:var(--dim)">
+        <input type="checkbox" id="forceReload"> 强制刷新（忽略缓存）
+      </label>
+      <span style="flex:1"></span>
+      <button class="danger sm" id="btnClearCache">清理缓存</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">2</span>查询软件包</h2>
+    <div class="flex">
+      <input type="text" id="q" placeholder="输入包名关键字，如 nginx / postgresql14（自动忽略 -_. 分隔符）" style="flex:1">
+      <label class="flex" style="margin:0;font-size:12px;color:var(--dim)"><input type="checkbox" id="useRegex"> 正则</label>
+      <button id="btnSearch">搜索</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div><label>架构过滤</label><select id="fArch"><option value="">全部</option></select></div>
+      <div><label>仓库过滤</label><select id="fRepo"><option value="">全部</option></select></div>
+    </div>
+    <div class="hint" id="searchInfo">输入关键字搜索（需先完成第 1 步）</div>
+    <div class="tablewrap" id="resultWrap" style="display:none">
+      <table>
+        <thead><tr>
+          <th class="chkcol"><input type="checkbox" id="chkAll"></th>
+          <th>包名</th><th>版本</th><th>架构</th><th>仓库</th><th>大小</th><th>描述</th>
+        </tr></thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+    <div class="btnbar">
+      <button id="btnResolve" disabled>解析依赖</button>
+      <span class="hint" id="selInfo">已选 0 个包</span>
+    </div>
+    <div class="resolve-box" id="resolveBox" style="display:none">
+      <div class="stat">
+        <span>含依赖共 <b id="rsCount"></b> 个包</span>
+        <span>总大小 <b id="rsSize"></b></span>
+        <span id="rsGapStat"></span>
+      </div>
+      <div id="rsGaps"></div>
+      <details><summary class="hint" style="cursor:pointer">查看完整清单</summary>
+        <div class="mono" id="rsList" style="max-height:180px;overflow-y:auto;margin-top:6px;line-height:1.7"></div>
+      </details>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">3</span>下载到本地目录</h2>
+    <label>保存目录（本机路径，目录需已存在）</label>
+    <div class="flex">
+      <input type="text" id="dlDir" style="flex:1">
+      <button class="ghost sm" id="btnBrowse">浏览…</button>
+    </div>
+    <div class="row">
+      <div><label>并发数（1-16）</label><input type="number" id="conc" value="6" min="1" max="16"></div>
+    </div>
+    <div class="btnbar">
+      <button id="btnDownload" disabled>开始下载（含全部依赖）</button>
+    </div>
+    <div class="hint">下载完成后会自动在目录中生成本地仓库索引（repodata / Packages.gz），整个目录拷贝到离线 Linux 即可作为本地源使用。</div>
+  </div>
+
+</div>
+<div class="col">
+
+  <div class="card" id="taskCard" style="display:none">
+    <h2>下载 / 加载任务</h2>
+    <div class="taskhead">
+      <span id="taskTitle" style="font-weight:600"></span>
+      <span class="st" id="taskStatus"></span>
+    </div>
+    <div class="pbar"><div id="taskBar"></div></div>
+    <div class="hint" id="taskMeta"></div>
+    <div class="btnbar">
+      <button class="danger sm" id="btnCancel" style="display:none">取消任务</button>
+    </div>
+    <div class="logbox" id="logBox" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>使用说明</h2>
+    <div class="hint" style="line-height:2">
+      ① 选择目标 Linux 的发行版体系、版本、镜像源与架构，点击「加载元数据」（大仓库需等待数十秒）。<br>
+      ② 搜索并勾选需要的包，点击「解析依赖」，确认依赖清单与未满足缺口。<br>
+      ③ 填写保存目录后点击「开始下载」，实时日志在上方任务区显示。<br>
+      ④ 下载完成后，将整个目录拷贝到离线 Linux：
+      <div class="mono" style="background:var(--panel2);border-radius:6px;padding:10px;margin-top:8px;line-height:1.8">
+        # RHEL 系 (yum/dnf):<br>
+        yum install ./目录/*.rpm<br>
+        # 或配置本地源 baseurl=file:///目录<br><br>
+        # Debian 系 (apt):<br>
+        apt install ./目录/*.deb<br>
+        # 或 sources.list 添加: deb [trusted=yes] file:///目录 ./
+      </div>
+    </div>
+  </div>
+
+</div>
+</main>
+
+<div class="modal-mask" id="dirModal">
+  <div class="modal">
+    <h3>选择保存目录（服务器本机目录）</h3>
+    <div class="body">
+      <div class="curpath" id="curPath"></div>
+      <div id="dirList"></div>
+    </div>
+    <div class="foot">
+      <button class="ghost" id="dirUp">上级目录</button>
+      <button class="ghost" id="dirClose">取消</button>
+      <button id="dirOk">选择此目录</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const state={presets:null,loaded:false,results:new Map(),selected:new Set(),resolvedIds:[],taskId:null,es:null,timer:null,resolveTaskId:null,lastSeq:0};
+
+function fmtSize(n){n=+n||0;for(const u of['B','KB','MB','GB']){if(n<1024||u==='GB')return n.toFixed(1)+' '+u;n/=1024}}
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+async function api(path,body){
+  const opt=body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{};
+  const r=await fetch(path,opt);
+  const j=await r.json();
+  if(!j.ok)throw new Error(j.error||'请求失败');
+  return j;
+}
+
+// ---------- 配置区 ----------
+async function initPresets(){
+  const j=await api('/api/presets');
+  state.presets=j;
+  $('family').innerHTML=Object.entries(j.presets).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('');
+  $('mirror').innerHTML=Object.entries(j.mirrors).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');
+  fillDistros();fillArch();renderExtras();fillRepos();toggleImportRow();
+  const st=await api('/api/status');
+  $('dlDir').value=st.default_dir;
+  updateCacheBadge(st);
+  if(st.package_count>0)updateLoaded(st);
+}
+function fillDistros(){
+  const f=$('family').value;
+  $('distro').innerHTML=state.presets.presets[f].distros.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+}
+function fillArch(){
+  const f=$('family').value;
+  $('arch').innerHTML=state.presets.presets[f].arches.map(a=>`<option value="${a}">${a}</option>`).join('');
+}
+function fillRepos(){
+  const f=$('family').value, did=$('distro').value, m=$('mirror').value, arch=$('arch').value;
+  const d=state.presets.presets[f].distros.find(x=>x.id===did);
+  if(!d)return;
+  let lines=(d.repos[m]||d.repos[Object.keys(d.repos).find(k=>!k.startsWith('_')&&k!=='official')]||d.repos.official||[]).slice();
+  const mbase=state.presets.mirrors[m].base;
+  let ppath='';
+  if(f==='deb'){
+    if(arch==='arm64'&&d.repos._arm64_base)ppath=d.repos._arm64_base;
+    else ppath='/ubuntu';
+  }
+  const sub=l=>l.replaceAll('{m}',mbase).replaceAll('{arch}',arch).replaceAll('{p}',ppath)
+                .replaceAll('{codename}',d.codename||'').replaceAll('{elver}',d.elver||'');
+  lines=lines.map(sub);
+  (d.extras||[]).forEach(ex=>{
+    const cb=document.querySelector(`input[data-extra="${ex.id}"]`);
+    if(!cb||!cb.checked)return;
+    const sel=document.querySelector(`select[data-extra-opt="${ex.id}"]`);
+    const pgver=sel?sel.value:'';
+    (ex.templates[m]||ex.templates.aliyun||ex.templates.official||[]).forEach(l=>lines.push(sub(l).replaceAll('{pgver}',pgver)));
+  });
+  $('repoText').value=lines.join('\n');
+  $('repoHint').textContent=state.presets.presets[f].hint+'；也可直接粘贴其他第三方仓库地址。';
+}
+function renderExtras(){
+  const f=$('family').value, did=$('distro').value;
+  const d=state.presets.presets[f].distros.find(x=>x.id===did);
+  const box=$('extrasWrap');
+  const exs=(d&&d.extras)||[];
+  box.innerHTML=exs.length?exs.map(ex=>{
+    const opt=ex.options?`<select data-extra-opt="${ex.id}" style="width:auto;display:inline-block;margin-left:6px;padding:2px 6px">${ex.options.map(o=>`<option ${o===ex.default_option?'selected':''}>${o}</option>`).join('')}</select>`:'';
+    return `<label class="flex" style="margin:4px 0;font-size:12.5px;color:var(--fg)"><input type="checkbox" data-extra="${ex.id}" style="width:auto"> <span>${ex.name}</span>${opt}</label>`;
+  }).join(''):'<div class="hint">该发行版无内置扩展源</div>';
+  box.querySelectorAll('input,select').forEach(el=>el.addEventListener('change',fillRepos));
+}
+['family','distro','mirror','arch'].forEach(id=>$(id).addEventListener('change',()=>{
+  if(id==='family'){fillDistros();fillArch();toggleImportRow()}
+  if(id==='family'||id==='distro')renderExtras();
+  fillRepos();
+}));
+
+function updateLoaded(st){
+  state.loaded=true;
+  $('stLoaded').innerHTML=`元数据: 已加载 <b>${st.package_count}</b> 个包（${st.repos.length} 个仓库）`;
+  $('stArch').textContent='目标架构: '+st.arch;
+  $('fRepo').innerHTML='<option value="">全部</option>'+st.repos.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('');
+  const extra=st.family==='rpm'?'noarch':'all';
+  $('fArch').innerHTML='<option value="">全部</option>'+[st.arch,extra].map(a=>`<option>${a}</option>`).join('');
+}
+
+function updateCacheBadge(st){
+  if(st.cache_bytes>0)$('stCache').innerHTML=`元数据缓存: <b>${fmtSize(st.cache_bytes)}</b>（${st.cache_files} 个仓库）`;
+  else $('stCache').textContent='元数据缓存: 空';
+}
+function resetAfterCacheClear(){
+  state.loaded=false;
+  state.results.clear();
+  state.selected.clear();
+  state.resolvedIds=[];
+  $('stLoaded').textContent='元数据: 未加载';
+  $('stArch').textContent='';
+  $('fRepo').innerHTML='<option value="">全部</option>';
+  $('fArch').innerHTML='<option value="">全部</option>';
+  $('resultWrap').style.display='none';
+  $('resultBody').innerHTML='';
+  $('selInfo').textContent='已选 0 个包';
+  $('resolveBox').style.display='none';
+  $('btnResolve').disabled=true;
+  $('btnDownload').disabled=true;
+  $('searchInfo').textContent='输入关键字搜索（需先完成第 1 步）';
+}
+$('btnClearCache').addEventListener('click',async()=>{
+  if(!confirm('清理缓存将删除全部仓库元数据缓存并清空已加载的包索引（不影响已下载的 .rpm/.deb 文件），下次加载元数据需重新下载。确定清理？'))return;
+  try{
+    const j=await api('/api/cache/clear',{});
+    updateCacheBadge(j);
+    resetAfterCacheClear();
+    alert(`已清理 ${j.removed} 个缓存文件，释放 ${fmtSize(j.freed)} 磁盘空间`);
+  }catch(e){alert(e.message)}
+});
+
+// ---------- 导入仓库 RPM ----------
+function toggleImportRow(){
+  $('rpmImportRow').style.display=$('family').value==='rpm'?'':'none';
+}
+function rpmReleasever(){
+  const d=state.presets.presets.rpm.distros.find(x=>x.id===$('distro').value);
+  return (d&&d.releasever)||'';
+}
+$('btnImportRpm').addEventListener('click',async()=>{
+  const url=$('repoRpmUrl').value.trim();
+  if(!url)return alert('请先粘贴仓库 RPM 的 URL');
+  const btn=$('btnImportRpm');btn.disabled=true;btn.textContent='导入中…';
+  try{
+    const j=await api('/api/repo/import',{url,arch:$('arch').value,releasever:rpmReleasever()});
+    const existing=new Set($('repoText').value.split('\n').map(l=>l.split('|').pop().trim()));
+    const lines=j.repos.filter(r=>!existing.has(r.url)).map(r=>`${r.name}|${r.url}`);
+    if(lines.length)$('repoText').value=$('repoText').value.replace(/\s*$/,'\n')+lines.join('\n');
+    let msg=`已导入 ${lines.length} 个仓库（来自 ${[...new Set(j.repos.map(r=>r.file))].join(', ')}）：\n\n`
+      +j.repos.map(r=>`  ${r.name} → ${r.url}`).join('\n');
+    if(j.skipped.length)msg+=`\n\n跳过 ${j.skipped.length} 个已禁用(enabled=0)的仓库：${j.skipped.join(', ')}`;
+    if(j.warnings.length)msg+=`\n\n注意：\n  ${j.warnings.join('\n  ')}`;
+    if(!lines.length)msg+='\n\n（这些仓库已在列表中，未重复添加）';
+    alert(msg);
+  }catch(e){alert('导入失败：'+e.message)}
+  btn.disabled=false;btn.textContent='导入仓库';
+});
+
+$('btnLoad').addEventListener('click',async()=>{
+  try{
+    const j=await api('/api/repos/load',{family:$('family').value,arch:$('arch').value,
+      repos_text:$('repoText').value,force:$('forceReload').checked});
+    openTask(j.task_id);
+  }catch(e){alert(e.message)}
+});
+
+// ---------- 搜索 ----------
+async function doSearch(){
+  const q=$('q').value.trim();
+  if(!q)return;
+  try{
+    const j=await api('/api/search',{q,regex:$('useRegex').checked,arch:$('fArch').value,repo:$('fRepo').value,limit:300});
+    state.results.clear();
+    j.results.forEach(r=>state.results.set(r.id,r));
+    $('searchInfo').textContent=j.total?`共匹配 ${j.total} 个，显示前 ${j.results.length} 个${j.via_summary?'（包名无匹配，以下为按描述匹配）':''}`:'未找到匹配的包——可尝试勾选扩展源（EPEL/PGDG）后重新加载元数据，或勾选"强制刷新"更新缓存';
+    renderResults();
+  }catch(e){alert(e.message)}
+}
+$('btnSearch').addEventListener('click',doSearch);
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
+
+function renderResults(){
+  const body=$('resultBody');
+  $('resultWrap').style.display=state.results.size?'block':'none';
+  body.innerHTML=[...state.results.values()].map(r=>{
+    const sel=state.selected.has(r.id);
+    return `<tr class="${sel?'sel':''}" data-id="${esc(r.id)}">
+      <td class="chkcol"><input type="checkbox" ${sel?'checked':''}></td>
+      <td class="name">${esc(r.name)}</td><td class="mono">${esc(r.evr)}</td>
+      <td>${esc(r.arch)}</td><td>${esc(repoName(r.repo))}</td>
+      <td class="mono">${fmtSize(r.size)}</td><td title="${esc(r.summary)}">${esc(r.summary)}</td></tr>`;
+  }).join('');
+  body.querySelectorAll('tr').forEach(tr=>{
+    tr.addEventListener('click',e=>{
+      if(e.target.tagName==='INPUT')return;
+      const chk=tr.querySelector('input');chk.checked=!chk.checked;toggleSel(tr.dataset.id,chk.checked,tr);
+    });
+    tr.querySelector('input').addEventListener('change',e=>toggleSel(tr.dataset.id,e.target.checked,tr));
+  });
+}
+function repoName(rid){
+  const opt=$('fRepo').querySelector(`option[value="${rid}"]`);
+  return opt?opt.textContent:rid;
+}
+function toggleSel(id,on,tr){
+  if(on)state.selected.add(id);else state.selected.delete(id);
+  if(tr)tr.classList.toggle('sel',on);
+  $('selInfo').textContent=`已选 ${state.selected.size} 个包`;
+  $('btnResolve').disabled=!state.selected.size;
+  $('btnDownload').disabled=true;state.resolvedIds=[];
+  $('resolveBox').style.display='none';
+}
+$('chkAll').addEventListener('change',e=>{
+  const on=e.target.checked;
+  state.results.forEach((r,id)=>{if(on)state.selected.add(id);else state.selected.delete(id)});
+  renderResults();
+  $('selInfo').textContent=`已选 ${state.selected.size} 个包`;
+  $('btnResolve').disabled=!state.selected.size;
+  $('btnDownload').disabled=true;$('resolveBox').style.display='none';
+});
+
+// ---------- 依赖解析 ----------
+$('btnResolve').addEventListener('click',async()=>{
+  try{
+    $('btnResolve').disabled=true;$('btnResolve').textContent='解析中…';
+    const j=await api('/api/resolve',{ids:[...state.selected]});
+    state.resolveTaskId=j.task_id;
+    state.resolvedIds=[];
+    $('resolveBox').style.display='none';$('btnDownload').disabled=true;
+    openTask(j.task_id);
+  }catch(e){alert(e.message)}
+  finally{$('btnResolve').disabled=false;$('btnResolve').textContent='解析依赖'}
+});
+function renderResolve(j){
+  state.resolvedIds=j.items.map(i=>i.id);
+  $('rsCount').textContent=j.count;
+  $('rsSize').textContent=fmtSize(j.total_size);
+  $('rsGapStat').innerHTML=j.gaps.length?`<span style="color:var(--red)">未满足依赖 ${j.gaps.length} 项</span>`:'<span style="color:var(--green)">依赖完整 ✓</span>';
+  $('rsGaps').innerHTML=j.gaps.length?('<div class="gaps-title">以下依赖在已配置仓库中找不到（文件依赖已通过 filelists 自动解析；可追加扩展源后重新加载元数据，或确认目标机已内置）：</div>'+
+    j.gaps.slice(0,80).map(g=>`<div class="gap">✗ ${esc(g.req)} <span style="color:var(--dim)">← ${esc(g.by)}</span></div>`).join('')):'';
+  $('rsList').innerHTML=j.items.map(i=>`<div>${esc(i.name)}-${esc(i.evr)}.${esc(i.arch)} <span style="color:var(--dim)">${fmtSize(i.size)}</span></div>`).join('');
+  $('resolveBox').style.display='block';
+  $('btnDownload').disabled=!j.count;
+}
+
+// ---------- 下载 ----------
+$('btnDownload').addEventListener('click',async()=>{
+  if(!state.resolvedIds.length)return;
+  try{
+    const j=await api('/api/download',{ids:state.resolvedIds,dir:$('dlDir').value.trim(),concurrency:+$('conc').value||6});
+    openTask(j.task_id);
+  }catch(e){alert(e.message)}
+});
+
+// ---------- 目录浏览 ----------
+let dirCur='';
+async function lsDir(p){
+  const j=await api('/api/ls'+(p?('?path='+encodeURIComponent(p)):''));
+  dirCur=j.path;
+  $('curPath').textContent=j.path||'（选择磁盘）';
+  $('dirList').innerHTML=j.dirs.map(d=>`<div class="diritem" data-d="${esc(d)}">${esc(d)}</div>`).join('');
+  $('dirList').querySelectorAll('.diritem').forEach(el=>el.addEventListener('dblclick',()=>lsDir(el.dataset.d)));
+  el_click();
+}
+function el_click(){
+  $('dirList').querySelectorAll('.diritem').forEach(el=>{
+    el.onclick=()=>{ $('dirList').querySelectorAll('.diritem').forEach(x=>x.style.background='');el.style.background='var(--panel2)';dirCur=el.dataset.d; };
+    el.ondblclick=()=>lsDir(el.dataset.d);
+  });
+}
+$('btnBrowse').addEventListener('click',()=>{$('dirModal').classList.add('show');lsDir($('dlDir').value.trim())});
+$('dirClose').addEventListener('click',()=>$('dirModal').classList.remove('show'));
+$('dirUp').addEventListener('click',async()=>{const j=await api('/api/ls?path='+encodeURIComponent(dirCur||''));lsDir(j.parent)});
+$('dirOk').addEventListener('click',()=>{if(dirCur)$('dlDir').value=dirCur;$('dirModal').classList.remove('show')});
+
+// ---------- 任务 / SSE ----------
+function openTask(tid){
+  if(state.es)state.es.close();
+  if(state.timer)clearInterval(state.timer);
+  state.taskId=tid;state.lastSeq=0;
+  $('taskCard').style.display='block';
+  $('logBox').innerHTML='';
+  $('btnCancel').style.display='inline-block';
+  const es=new EventSource(`/api/tasks/${tid}/events`);
+  state.es=es;
+  es.onmessage=e=>{
+    const ev=JSON.parse(e.data);
+    if(ev.seq<=state.lastSeq)return;
+    state.lastSeq=ev.seq;
+    renderEvent(ev);
+    if(['done','error','cancelled'].includes(ev.type)){
+      es.close();$('btnCancel').style.display='none';
+      refreshStatus();pollTask(tid);
+    }
+  };
+  pollTask(tid);
+  state.timer=setInterval(()=>pollTask(tid),1500);
+}
+async function pollTask(tid){
+  try{
+    const j=await api('/api/tasks');
+    const t=j.tasks.find(x=>x.id===tid);
+    if(!t){clearInterval(state.timer);return}
+    $('taskTitle').textContent=t.title;
+    const st=$('taskStatus');st.textContent={running:'进行中',done:'已完成',error:'失败',cancelled:'已取消'}[t.status]||t.status;
+    st.className='st '+t.status;
+    const p=t.progress;
+    if(t.type==='download'&&p.total_bytes>0){
+      const pct=Math.min(100,(p.done_bytes/p.total_bytes*100));
+      $('taskBar').style.width=pct+'%';
+      $('taskMeta').textContent=`${p.done_files}/${p.total_files} 个包 · ${fmtSize(p.done_bytes)} / ${fmtSize(p.total_bytes)}`+(p.failed_files?` · 失败 ${p.failed_files}`:'');
+    }else if(t.type==='load'&&p.total_files>0){
+      $('taskBar').style.width=(p.done_files/p.total_files*100)+'%';
+      $('taskMeta').textContent=`仓库 ${p.done_files}/${p.total_files}`;
+    }
+    if(t.status!=='running'){clearInterval(state.timer);$('btnCancel').style.display='none'}
+    if(t.type==='resolve'&&t.status!=='running'&&state.resolveTaskId===t.id){
+      state.resolveTaskId=null;
+      if(t.result)renderResolve(t.result);
+      else if(t.status==='error')alert('解析失败，详见任务日志');
+    }
+  }catch(e){}
+}
+function renderEvent(ev){
+  const box=$('logBox');
+  if(ev.type==='progress')return;
+  let cls=ev.type,txt=ev.msg||'';
+  if(ev.type==='file'){
+    if(ev.status==='downloading'){updateFileLine(ev);return}
+    cls=ev.status;txt=ev.msg||(`${ev.file} ${ev.status}`);
+  }
+  const div=document.createElement('div');
+  div.className=cls;
+  div.innerHTML=`<span class="t">${ev.time}</span>${esc(txt)}`;
+  box.appendChild(div);
+  while(box.children.length>800)box.removeChild(box.firstChild);
+  box.scrollTop=box.scrollHeight;
+}
+const fileLines={};
+function updateFileLine(ev){
+  const box=$('logBox');
+  let div=fileLines[ev.file];
+  if(!div){
+    div=document.createElement('div');div.className='file';
+    box.appendChild(div);fileLines[ev.file]=div;
+  }
+  const pct=ev.total?Math.round(ev.got/ev.total*100):0;
+  div.innerHTML=`<span class="t">${ev.time}</span>⬇ ${esc(ev.file)} ${pct}% (${fmtSize(ev.got)}/${fmtSize(ev.total)})`;
+  box.scrollTop=box.scrollHeight;
+}
+async function refreshStatus(){
+  try{
+    const st=await api('/api/status');
+    updateCacheBadge(st);
+    if(st.package_count>0)updateLoaded(st);
+  }catch(e){}
+}
+$('btnCancel').addEventListener('click',async()=>{
+  if(!state.taskId)return;
+  try{await api(`/api/tasks/${state.taskId}/cancel`,{})}catch(e){}
+});
+
+initPresets().catch(e=>alert('初始化失败: '+e.message));
+</script>
+</body>
+</html>
